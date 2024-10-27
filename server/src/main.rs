@@ -1,5 +1,3 @@
-// SERVER
-
 use ggez;
 use ggez::event;
 use ggez::graphics;
@@ -9,12 +7,10 @@ use ggez::{Context, GameResult};
 use rand::{self, thread_rng, Rng};
 use serde_json;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{sleep, Duration};
 
 const PADDING: f32 = 40.0;
 const MIDDLE_LINE_W: f32 = 2.0;
@@ -25,7 +21,7 @@ const RACKET_HEIGHT_HALF: f32 = RACKET_HEIGHT * 0.5;
 const BALL_SIZE: f32 = 30.0;
 const BALL_SIZE_HALF: f32 = BALL_SIZE * 0.5;
 const PLAYER_SPEED: f32 = 600.0;
-const BALL_SPEED: f32 = 500.0;
+const BALL_SPEED: f32 = 300.0;
 
 fn clamp(value: &mut f32, low: f32, high: f32) {
     if *value < low {
@@ -50,14 +46,8 @@ fn move_racket(pos: &mut na::Point2<f32>, keycode: KeyCode, y_dir: f32, ctx: &mu
 
 fn randomize_vec(vec: &mut na::Vector2<f32>, x: f32, y: f32) {
     let mut rng = thread_rng();
-    vec.x = match rng.gen_bool(0.5) {
-        true => x,
-        false => -x,
-    };
-    vec.y = match rng.gen_bool(0.5) {
-        true => y,
-        false => -y,
-    };
+    vec.x = if rng.gen_bool(0.5) { x } else { -x };
+    vec.y = if rng.gen_bool(0.5) { y } else { -y };
 }
 
 struct MainState {
@@ -84,7 +74,7 @@ impl MainState {
         let mut ball_vel = na::Vector2::new(0.0, 0.0);
         randomize_vec(&mut ball_vel, BALL_SPEED, BALL_SPEED);
 
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(2);
         MainState {
             player_1_pos: na::Point2::new(RACKET_WIDTH_HALF + PADDING, screen_h_half),
             player_2_pos: na::Point2::new(screen_w - RACKET_WIDTH_HALF - PADDING, screen_h_half),
@@ -98,48 +88,29 @@ impl MainState {
     }
 }
 
+
 impl event::EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
-        let dt = ggez::timer::delta(ctx).as_secs_f32();
         let (screen_w, screen_h) = graphics::drawable_size(ctx);
         move_racket(&mut self.player_2_pos, KeyCode::Up, -1.0, ctx);
         move_racket(&mut self.player_2_pos, KeyCode::Down, 1.0, ctx);
-        self.ball_pos += self.ball_vel * dt;
+
+        //tạo các biến lưu trữ chuẩn bị gửi đi và nhận về
         let position_y = self.player_2_pos.y;
         let ball_x = self.ball_pos.x;
         let ball_y = self.ball_pos.y;
         let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
-            println!("Server is running on 127.0.0.1:7878");
-            let mut stream = listener.accept().await.unwrap();
 
-            let data_get = if let Ok(val) =
-                get_data_and_send_respond(&mut stream.0, position_y, ball_x, ball_y).await
-            {
-                val
-            } else {
-                println!("Error");
-                return;
-            };
+        tokio::spawn(handle_connection(position_y, ball_x, ball_y, tx));
 
-            println!("{:?}", data_get);
-
-            // Đẩy `data_respond` vào kênh
-            if let Err(e) = tx.send(data_get).await {
-                println!("Failed to send data through channel: {:?}", e);
-            }
-
-            //  sleep(Duration::from_secs(1)).await;
-        });
-
-        // Trong phần `update` của `EventHandler`, nhận dữ liệu từ `rx`
         if let Ok(data) = self.rx.try_recv() {
-            // Sử dụng `data` để cập nhật `self` (hoặc xử lý dữ liệu theo yêu cầu)
             self.player_1_pos.y = data.player_1_pos_y;
         }
-
-        // self.ball_pos += self.ball_vel * dt;
+        
+        //update bóng theo thời gian thực của khung hình
+        let dt = ggez::timer::delta(ctx).as_secs_f32();
+        self.ball_pos += self.ball_vel * dt;
+        //
 
         if self.ball_pos.x < 0.0 {
             self.ball_pos.x = screen_w * 0.5;
@@ -154,7 +125,6 @@ impl event::EventHandler for MainState {
             self.player_1_score += 1;
         }
 
-        // ball, Y bounce
         if self.ball_pos.y < BALL_SIZE_HALF {
             self.ball_pos.y = BALL_SIZE_HALF;
             self.ball_vel.y = self.ball_vel.y.abs();
@@ -243,13 +213,32 @@ impl event::EventHandler for MainState {
         let (score_text_w, score_text_h) = score_text.dimensions(ctx);
         score_pos -= na::Vector2::new(score_text_w as f32 * 0.5, score_text_h as f32 * 0.5);
         draw_param.dest = score_pos.into();
-
         graphics::draw(ctx, &score_text, draw_param)?;
-
         graphics::present(ctx)?;
         Ok(())
     }
 }
+
+
+
+async fn handle_connection(position_y: f32, ball_x: f32, ball_y: f32, tx: Sender<Player1Data>) {
+    let listener = TcpListener::bind("127.0.0.1:8081").await.unwrap();
+    let (mut stream, _) = listener.accept().await.unwrap();
+
+    let data_get = if let Ok(val) = get_data_and_send_respond(&mut stream, position_y, ball_x, ball_y).await {
+        val
+    } else {
+        println!("Error");
+        return;
+    };
+    println!("{:?}", data_get);
+
+    if let Err(e) = tx.send(data_get).await {
+        println!("Failed to send data through channel: {:?}", e);
+    }
+}
+
+
 
 async fn get_data_and_send_respond(
     stream: &mut TcpStream,
@@ -266,19 +255,16 @@ async fn get_data_and_send_respond(
     data_map.insert("player_2_pos_y", position_y);
     data_map.insert("ball_pos_x", ball_x);
     data_map.insert("ball_pos_y", ball_y);
-
     let data_json = serde_json::to_string(&data_map).expect("Failed to convert data");
-
     stream.write_all(data_json.as_bytes()).await?;
-
     Ok(player_data)
 }
 
 #[tokio::main]
 async fn main() {
-    let cb = ggez::ContextBuilder::new("pong", "TanTan");
+    let cb = ggez::ContextBuilder::new("1", "2");
     let (mut ctx, mut event_loop) = cb.build().unwrap();
-    graphics::set_window_title(&ctx, "Rusty Pong");
+    graphics::set_window_title(&ctx, "Windows-Server");
     let mut state = MainState::new(&mut ctx);
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
