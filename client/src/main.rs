@@ -7,12 +7,10 @@ use ggez::{Context, GameResult};
 use rand::{self, thread_rng, Rng};
 use serde_json;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{sleep, Duration};
 
 const PADDING: f32 = 40.0;
 const MIDDLE_LINE_W: f32 = 2.0;
@@ -105,35 +103,14 @@ impl event::EventHandler for MainState {
         move_racket(&mut self.player_1_pos, KeyCode::S, 1.0, ctx);
         let position_y = self.player_1_pos.y;
         let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let mut stream = TcpStream::connect("172.16.100.196:8081").await.unwrap();
-            let data_respond =
-                if let Ok(val) = send_data_and_wait_respond(&mut stream, position_y).await {
-                    val
-                } else {
-                    println!("Error");
-                    return;
-                };
+        
+        tokio::spawn(handle_connection(position_y,tx));
 
-            println!("{:?}", data_respond);
-
-            // Đẩy `data_respond` vào kênh
-            if let Err(e) = tx.send(data_respond).await {
-                println!("Failed to send data through channel: {:?}", e);
-            }
-
-            // sleep(Duration::from_secs(1)).await;
-        });
-
-        // Trong phần `update` của `EventHandler`, nhận dữ liệu từ `rx`
         if let Ok(data) = self.rx.try_recv() {
-            // Sử dụng `data` để cập nhật `self` (hoặc xử lý dữ liệu theo yêu cầu)
             self.player_2_pos.y = data.player_2_pos_y;
             self.ball_pos.x = data.ball_pos_x;
             self.ball_pos.y = data.ball_pos_y;
         }
-
-        // self.ball_pos += self.ball_vel * dt;
 
         if self.ball_pos.x < 0.0 {
             self.ball_pos.x = screen_w * 0.5;
@@ -148,7 +125,6 @@ impl event::EventHandler for MainState {
             self.player_1_score += 1;
         }
 
-        // ball, Y bounce
         if self.ball_pos.y < BALL_SIZE_HALF {
             self.ball_pos.y = BALL_SIZE_HALF;
             self.ball_vel.y = self.ball_vel.y.abs();
@@ -244,6 +220,33 @@ impl event::EventHandler for MainState {
         Ok(())
     }
 }
+
+
+
+async fn handle_connection(position_y: f32, tx: Sender<Player2Data>) {
+    let mut stream = match TcpStream::connect("127.0.0.1:8081").await {
+        Ok(stream) => stream,
+        Err(e) => {
+            println!("Failed to connect: {:?}", e);
+            return;
+        }
+    };
+
+    let data_respond = match send_data_and_wait_respond(&mut stream, position_y).await {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Error: {:?}", e);
+            return;
+        }
+    };
+
+    println!("{:?}", data_respond);
+
+    if let Err(e) = tx.send(data_respond).await {
+        println!("Failed to send data through channel: {:?}", e);
+    }
+}
+
 
 async fn send_data_and_wait_respond(
     stream: &mut TcpStream,
