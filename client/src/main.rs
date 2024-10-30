@@ -61,10 +61,10 @@ struct MainState {
     player_2_pos: na::Point2<f32>,
     ball_pos: na::Point2<f32>,
     ball_vel: na::Vector2<f32>,
-    player_1_score: i32,
-    player_2_score: i32,
-    tx: Sender<Player2Data>,
-    rx: Receiver<Player2Data>,
+    player_1_score: f32,
+    player_2_score: f32,
+    tx2: Sender<Player1Data>,
+    rx1: Receiver<Player2Data>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -72,26 +72,32 @@ struct Player2Data {
     player_2_pos_y: f32,
     ball_pos_x: f32,
     ball_pos_y: f32,
+    player_2_score: f32,
+}
+
+#[derive(Debug)]
+struct Player1Data {
+    player_1_pos_y: f32,
+    player_1_score: f32,
 }
 
 impl MainState {
-    pub fn new(ctx: &mut Context) -> Self {
+    pub fn new(ctx: &mut Context, tx2: Sender<Player1Data>, rx1: Receiver<Player2Data>) -> Self {
         let (screen_w, screen_h) = graphics::drawable_size(ctx);
         let (screen_w_half, screen_h_half) = (screen_w * 0.5, screen_h * 0.5);
 
         let mut ball_vel = na::Vector2::new(0.0, 0.0);
         randomize_vec(&mut ball_vel, BALL_SPEED, BALL_SPEED);
 
-        let (tx, rx) = mpsc::channel(1);
         MainState {
             player_1_pos: na::Point2::new(RACKET_WIDTH_HALF + PADDING, screen_h_half),
             player_2_pos: na::Point2::new(screen_w - RACKET_WIDTH_HALF - PADDING, screen_h_half),
             ball_pos: na::Point2::new(screen_w_half, screen_h_half),
             ball_vel,
-            player_1_score: 0,
-            player_2_score: 0,
-            tx,
-            rx,
+            player_1_score: 0.0,
+            player_2_score: 0.0,
+            tx2,
+            rx1,
         }
     }
 }
@@ -101,28 +107,33 @@ impl event::EventHandler for MainState {
         let (screen_w, screen_h) = graphics::drawable_size(ctx);
         move_racket(&mut self.player_1_pos, KeyCode::W, -1.0, ctx);
         move_racket(&mut self.player_1_pos, KeyCode::S, 1.0, ctx);
-        let position_y = self.player_1_pos.y;
-        let tx = self.tx.clone();
-        
-        tokio::spawn(handle_connection(position_y,tx));
+        let player_1_data: Player1Data = Player1Data {
+            player_1_pos_y: self.player_1_pos.y,
+            player_1_score: self.player_1_score,
+        };
+        // println!("we have {:?}", player_1_data);
+        if let Err(err) = self.tx2.try_send(player_1_data) {
+            println!("Can't send to rx2 {}", err);
+        }
 
-        if let Ok(data) = self.rx.try_recv() {
+        if let Ok(data) = self.rx1.try_recv() {
             self.player_2_pos.y = data.player_2_pos_y;
             self.ball_pos.x = data.ball_pos_x;
             self.ball_pos.y = data.ball_pos_y;
+            self.player_2_score = data.player_2_score;
         }
 
         if self.ball_pos.x < 0.0 {
             self.ball_pos.x = screen_w * 0.5;
             self.ball_pos.y = screen_h * 0.5;
             randomize_vec(&mut self.ball_vel, BALL_SPEED, BALL_SPEED);
-            self.player_2_score += 1;
+            self.player_2_score += 1.0;
         }
         if self.ball_pos.x > screen_w {
             self.ball_pos.x = screen_w * 0.5;
             self.ball_pos.y = screen_h * 0.5;
             randomize_vec(&mut self.ball_vel, BALL_SPEED, BALL_SPEED);
-            self.player_1_score += 1;
+            self.player_1_score += 1.0;
         }
 
         if self.ball_pos.y < BALL_SIZE_HALF {
@@ -221,39 +232,14 @@ impl event::EventHandler for MainState {
     }
 }
 
-
-
-async fn handle_connection(position_y: f32, tx: Sender<Player2Data>) {
-    let mut stream = match TcpStream::connect("127.0.0.1:8081").await {
-        Ok(stream) => stream,
-        Err(e) => {
-            println!("Failed to connect: {:?}", e);
-            return;
-        }
-    };
-
-    let data_respond = match send_data_and_wait_respond(&mut stream, position_y).await {
-        Ok(val) => val,
-        Err(e) => {
-            println!("Error: {:?}", e);
-            return;
-        }
-    };
-
-    println!("{:?}", data_respond);
-
-    if let Err(e) = tx.send(data_respond).await {
-        println!("Failed to send data through channel: {:?}", e);
-    }
-}
-
-
 async fn send_data_and_wait_respond(
     stream: &mut TcpStream,
     position_y: f32,
+    player_1_score: f32,
 ) -> io::Result<Player2Data> {
     let mut data_map = HashMap::new();
     data_map.insert("player_1_pos_y", position_y);
+    data_map.insert("player_1_score", player_1_score);
     let data_json = serde_json::to_string(&data_map).expect("Failed to convert data");
 
     stream.write_all(data_json.as_bytes()).await?;
@@ -267,11 +253,27 @@ async fn send_data_and_wait_respond(
     Ok(player_data)
 }
 
+async fn tcp_client_task(tx1: Sender<Player2Data>, mut rx2: Receiver<Player1Data>) {
+    let mut stream = TcpStream::connect("127.0.0.1:8080").await.unwrap();
+    while let Some(data) = rx2.recv().await {
+        if let Ok(data) =
+            send_data_and_wait_respond(&mut stream, data.player_1_pos_y, data.player_1_score).await
+        {
+            if let Err(err) = tx1.send(data).await {
+                println!("Can't send for rx1 {err}");
+            }
+        };
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let cb = ggez::ContextBuilder::new("pong", "TanTan");
+    let (tx1, rx1): (Sender<Player2Data>, Receiver<Player2Data>) = mpsc::channel(100);
+    let (tx2, rx2): (Sender<Player1Data>, Receiver<Player1Data>) = mpsc::channel(100);
+    let cb: ggez::ContextBuilder = ggez::ContextBuilder::new("pong", "TanTan");
     let (mut ctx, mut event_loop) = cb.build().unwrap();
-    graphics::set_window_title(&ctx, "Rusty Pong");
-    let mut state = MainState::new(&mut ctx);
+    graphics::set_window_title(&ctx, "Client device");
+    let mut state = MainState::new(&mut ctx, tx2.clone(), rx1);
+    tokio::spawn(tcp_client_task(tx1.clone(), rx2));
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
