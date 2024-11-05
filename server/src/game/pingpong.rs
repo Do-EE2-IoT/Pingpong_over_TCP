@@ -279,7 +279,7 @@ pub fn game_pingpong_run(rx: Receiver<UserCommand>, tx: Sender<GameData>) {
 
 pub async fn pingpong_update(tx: Sender<UserCommand>, data: String) -> Result<(), std::io::Error> {
     let command: UserCommand = serde_json::from_str(&data)?;
-    println!("{:?}", command);
+   // println!("{:?}", command);
     tx.send(command).await.expect("Can't send to game update");
     Ok(())
 }

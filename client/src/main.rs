@@ -15,7 +15,7 @@ mod network;
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    let mut client_tcp = ClientTcp::connect("127.0.0.1:7878").await.unwrap();
+    let mut client_tcp = ClientTcp::connect("127.0.0.1:8080").await.unwrap();
     let mut buffer = [0; 1024];
     let (tx, rx): (Sender<GameData>, Receiver<GameData>) = tokio::sync::mpsc::channel(100);
     spawn(async move {
@@ -24,7 +24,6 @@ async fn main() -> Result<(), io::Error> {
 
     loop {
         tokio::select! {
-            // Gọi `get_input_command().await` trực tiếp và xử lý kết quả
             get_cmd = get_input_command() => {
                 match get_cmd {
                     Ok(command) => match command {
@@ -32,19 +31,19 @@ async fn main() -> Result<(), io::Error> {
                             // Tạo JSON cho lệnh "up"
                             let json_data = json!({ "command": "up" }).to_string();
                             client_tcp.send_data(json_data.as_bytes()).await?;
-                            println!("UP");
+                          //  println!("UP");
                         },
                         Command::Down => {
                             // Tạo JSON cho lệnh "down"
                             let json_data = json!({ "command": "down" }).to_string();
                             client_tcp.send_data(json_data.as_bytes()).await?;
-                            println!("DOWN");
+                            //println!("DOWN");
                         },
                         Command::Get => {
                             // Tạo JSON cho lệnh "get"
                             let json_data = json!({ "command": "get" }).to_string();
                             client_tcp.send_data(json_data.as_bytes()).await?;
-                            println!("GET");
+                           // println!("GET");
                         },
                     },
                     Err(e) => {

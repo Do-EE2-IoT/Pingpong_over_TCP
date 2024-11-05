@@ -10,7 +10,7 @@ pub enum Command {
 }
 
 pub async fn get_input_command() -> Result<Command, io::Error> {
-    time::sleep(Duration::from_millis(70)).await;
+    time::sleep(Duration::from_millis(30)).await;
 
     if event::poll(Duration::from_millis(0))? {
         if let Event::Key(key_event) = event::read()? {

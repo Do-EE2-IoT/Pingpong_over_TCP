@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Khởi tạo server và chấp nhận kết nối
-    let mut listener = ServerTcp::bind_and_accept("0.0.0.0:7878").await.unwrap();
+    let mut listener = ServerTcp::bind_and_accept("0.0.0.0:8080").await.unwrap();
     let (tx, rx): (Sender<UserCommand>, Receiver<UserCommand>) = tokio::sync::mpsc::channel(100);
     let (tx_game_data, mut rx_game_data): (Sender<GameData>, Receiver<GameData>) =
         tokio::sync::mpsc::channel(100);
