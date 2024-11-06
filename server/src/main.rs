@@ -1,11 +1,10 @@
 use std::io;
-
+mod game;
 use async_std::task::spawn;
 use game::pingpong::{game_pingpong_run, pingpong_update, GameData, UserCommand};
-use network::tcp::ServerTcp;
+use library::network::tcp::server_tcp::ServerTcp;
 use tokio::select;
-mod game;
-mod network;
+
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration};
 

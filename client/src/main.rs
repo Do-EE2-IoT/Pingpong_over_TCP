@@ -1,21 +1,17 @@
-use std::io;
-
-use async_std::task::spawn;
-use game::pingpong::{game_pingpong_run, pingpong_update, GameData};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{sleep, Duration};
-
-use crate::cmd_in::{get_input_command, UserCommand};
-use crate::network::tcp::ClientTcp;
-
 mod cmd_in;
 mod game;
-mod network;
+use async_std::task::spawn;
+use cmd_in::{get_input_command, UserCommand};
+use game::pingpong::{game_pingpong_run, pingpong_update, GameData};
+use library::network::tcp::client_tcp::ClientTcp;
+use std::io;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
     let mut client_tcp = ClientTcp::connect("127.0.0.1:8080").await.unwrap();
-    let mut buffer = [0; 1024];
+
     let (tx, rx): (Sender<GameData>, Receiver<GameData>) = tokio::sync::mpsc::channel(100);
     spawn(async move {
         game_pingpong_run(rx);
