@@ -15,22 +15,17 @@ impl ServerTcp {
         Ok(ServerTcp { socket })
     }
 
-    pub async fn receive_data(&mut self) -> Result<String, io::Error> {
+    pub async fn receive_data(&mut self) -> Result<Vec<u8>, io::Error> {
         let mut buffer = vec![0; 1024]; // Tạo một buffer để lưu dữ liệu nhận được
 
         let n = self.socket.read(&mut buffer).await?;
 
-        match str::from_utf8(&buffer[..n]) {
-            Ok(string) => Ok(string.to_string()),
-            Err(_) => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid UTF-8 sequence",
-            )),
-        }
+        buffer.truncate(n);
+        Ok(buffer)
     }
 
-    pub async fn respond(&mut self, message: &str) -> Result<(), io::Error> {
-        self.socket.write_all(message.as_bytes()).await?;
+    pub async fn respond(&mut self, message: Vec<u8>) -> Result<(), io::Error> {
+        self.socket.write_all(&message).await?;
         Ok(())
     }
 }

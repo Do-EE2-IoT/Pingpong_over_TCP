@@ -202,8 +202,9 @@ pub fn game_pingpong_run(rx: Receiver<GameData>) {
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
 
-pub async fn pingpong_update(tx: Sender<GameData>, data: String) -> Result<(), io::Error> {
-    let game_data: GameData = serde_json::from_str(&data)?;
+pub async fn pingpong_update(tx: Sender<GameData>, data: Vec<u8>) -> Result<(), io::Error> {
+    let game_data: GameData = serde_json::from_slice(&data)?;
+    println!("{:?}", game_data);
     tx.send(game_data).await.expect("Can't send to update game");
     Ok(())
 }

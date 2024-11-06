@@ -20,8 +20,10 @@ const PLAYER_SPEED: f32 = 600.0;
 const BALL_SPEED: f32 = 200.0;
 
 #[derive(Deserialize, Debug)]
-pub struct UserCommand {
-    command: String,
+pub enum UserCommand {
+    Up,
+    Down,
+    Get,
 }
 
 fn clamp(value: &mut f32, low: f32, high: f32) {
@@ -101,8 +103,8 @@ impl event::EventHandler for MainState {
         move_racket(&mut self.player_2_pos, KeyCode::Down, 1.0, ctx);
 
         if let Ok(data) = self.rx.try_recv() {
-            match data.command.as_str() {
-                "up" => {
+            match data {
+                UserCommand::Up => {
                     println!("UP");
                     self.player_1_pos.y += -18.0 * PLAYER_SPEED * dt;
                     clamp(
@@ -123,7 +125,7 @@ impl event::EventHandler for MainState {
                         println!("Can't send with {err}");
                     }
                 }
-                "down" => {
+                UserCommand::Down => {
                     self.player_1_pos.y += 18.0 * PLAYER_SPEED * dt;
                     clamp(
                         &mut self.player_1_pos.y,
@@ -143,7 +145,7 @@ impl event::EventHandler for MainState {
                         println!("Can't send with {err}");
                     }
                 }
-                "get" => {
+                UserCommand::Get => {
                     let game_data = GameData {
                         pos_player1: self.player_1_pos.y,
                         pos_player2: self.player_2_pos.y,
@@ -156,7 +158,6 @@ impl event::EventHandler for MainState {
                         println!("Can't send with {err}");
                     }
                 }
-                _ => println!("Not define command"),
             }
         }
         self.ball_pos += self.ball_vel * dt;
@@ -277,10 +278,10 @@ pub fn game_pingpong_run(rx: Receiver<UserCommand>, tx: Sender<GameData>) {
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
 
-pub async fn pingpong_update(tx: Sender<UserCommand>, data: String) -> Result<(), std::io::Error> {
-    let command: UserCommand = serde_json::from_str(&data)?;
-   // println!("{:?}", command);
+pub async fn pingpong_update(tx: Sender<UserCommand>, data: Vec<u8>) -> Result<(), std::io::Error> {
+    // Chỉ nhận data kiểu user command
+    let command: UserCommand = serde_json::from_slice(&data)?;
+    println!("{:?}", command);
     tx.send(command).await.expect("Can't send to game update");
     Ok(())
 }
-

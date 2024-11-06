@@ -7,7 +7,7 @@ use tokio::select;
 mod game;
 mod network;
 use tokio::sync::mpsc::{Receiver, Sender};
-
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
@@ -20,6 +20,7 @@ async fn main() -> Result<(), io::Error> {
         game_pingpong_run(rx, tx_game_data.clone());
     });
 
+    sleep(Duration::from_secs(2)).await;
     // Lặp để nhận dữ liệu từ client và cập nhật game
     loop {
         select! {
@@ -27,7 +28,10 @@ async fn main() -> Result<(), io::Error> {
             result = listener.receive_data() => {
                 match result {
                     Ok(data)=> {
-                        pingpong_update(tx.clone(),data).await.unwrap();
+
+                        if let Err(err) =   pingpong_update(tx.clone(),data).await{
+                            println!("Can't update data with {:?}", err);
+                        }
                     },
 
                     Err(e) => {
@@ -38,9 +42,9 @@ async fn main() -> Result<(), io::Error> {
 
              // Handle incoming game data
             Some(game_data) = rx_game_data.recv() => {
-                match serde_json::to_string(&game_data) {
-                    Ok(json) => {
-                        if let Err(e) = listener.respond(&json).await {
+                match serde_json::to_vec(&game_data) {
+                    Ok(data) => {
+                        if let Err(e) = listener.respond(data).await {
                             eprintln!("Failed to send response: {:?}", e);
                         }
                     }
@@ -48,7 +52,7 @@ async fn main() -> Result<(), io::Error> {
                 }
             },
 
-            
+
 
         }
     }

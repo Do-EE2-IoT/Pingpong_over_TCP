@@ -1,12 +1,11 @@
-use serde_json::json;
 use std::io;
-use std::str::FromStr;
 
 use async_std::task::spawn;
 use game::pingpong::{game_pingpong_run, pingpong_update, GameData};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::{sleep, Duration};
 
-use crate::cmd_in::{get_input_command, Command};
+use crate::cmd_in::{get_input_command, UserCommand};
 use crate::network::tcp::ClientTcp;
 
 mod cmd_in;
@@ -21,29 +20,25 @@ async fn main() -> Result<(), io::Error> {
     spawn(async move {
         game_pingpong_run(rx);
     });
-
+    sleep(Duration::from_secs(2)).await;
     loop {
         tokio::select! {
             get_cmd = get_input_command() => {
                 match get_cmd {
                     Ok(command) => match command {
-                        Command::Up => {
+                        UserCommand::Up => {
                             // Tạo JSON cho lệnh "up"
-                            let json_data = json!({ "command": "up" }).to_string();
-                            client_tcp.send_data(json_data.as_bytes()).await?;
+                            let data = serde_json::to_vec(&UserCommand::Up)?;
+                            client_tcp.send_data(data).await?;
                           //  println!("UP");
                         },
-                        Command::Down => {
-                            // Tạo JSON cho lệnh "down"
-                            let json_data = json!({ "command": "down" }).to_string();
-                            client_tcp.send_data(json_data.as_bytes()).await?;
-                            //println!("DOWN");
+                        UserCommand::Down => {
+                            let data = serde_json::to_vec(&UserCommand::Down)?;
+                            client_tcp.send_data(data).await?;
                         },
-                        Command::Get => {
-                            // Tạo JSON cho lệnh "get"
-                            let json_data = json!({ "command": "get" }).to_string();
-                            client_tcp.send_data(json_data.as_bytes()).await?;
-                           // println!("GET");
+                        UserCommand::Get => {
+                            let data = serde_json::to_vec(&UserCommand::Get)?;
+                            client_tcp.send_data(data).await?;
                         },
                     },
                     Err(e) => {
@@ -53,13 +48,10 @@ async fn main() -> Result<(), io::Error> {
                 }
             },
              // Nhận dữ liệu từ server và xử lý
-             recv_result = client_tcp.receive_data(&mut buffer) => {
+             recv_result = client_tcp.receive_data() => {
                 match recv_result {
-                    Ok(size) => {
-                        if size > 0 {
-                            let received_data = String::from_utf8_lossy(&buffer[..size]);
-                            pingpong_update(tx.clone(),String::from_str(&received_data).unwrap()).await?;
-                        }
+                    Ok(data) => {
+                            pingpong_update(tx.clone(),data).await?;
                     },
                     Err(e) => {
                         panic!("{}", e);

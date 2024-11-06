@@ -1,26 +1,27 @@
 use crossterm::event::{self, Event, KeyCode};
+use serde::{Serialize, Deserialize};
 use std::{io, time::Duration};
 use tokio::time::{self};
 
-
-pub enum Command {
+#[derive(Serialize, Deserialize)]
+pub enum UserCommand {
     Up,
     Down,
     Get,
 }
 
-pub async fn get_input_command() -> Result<Command, io::Error> {
-    time::sleep(Duration::from_millis(30)).await;
+pub async fn get_input_command() -> Result<UserCommand, io::Error> {
+    time::sleep(Duration::from_millis(10)).await;
 
     if event::poll(Duration::from_millis(0))? {
         if let Event::Key(key_event) = event::read()? {
             return match key_event.code {
-                KeyCode::Up => Ok(Command::Up),
-                KeyCode::Down => Ok(Command::Down),
-                _ => Ok(Command::Get),
+                KeyCode::Up => Ok(UserCommand::Up),
+                KeyCode::Down => Ok(UserCommand::Down),
+                _ => Ok(UserCommand::Get),
             };
         }
     }
 
-    Ok(Command::Get)
+    Ok(UserCommand::Get)
 }
