@@ -28,7 +28,8 @@ impl UDP {
 
     pub async fn broadcast(&mut self, port: u16, data: Vec<u8>) -> Result<(), io::Error> {
         let broadcast_address = SocketAddrV4::new(Ipv4Addr::new(255, 255, 255, 255), port);
-        self.socket.send_to(&data, broadcast_address);
+        self.socket.set_broadcast(true)?;
+        self.socket.send_to(&data, broadcast_address).await?;
         Ok(())
     }
 }

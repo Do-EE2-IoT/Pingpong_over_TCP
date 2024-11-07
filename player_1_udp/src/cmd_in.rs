@@ -7,7 +7,7 @@ use tokio::time::{self};
 pub enum UserCommand {
     Up,
     Down,
-    Get,
+    None,
 }
 
 pub async fn get_input_command() -> Result<UserCommand, io::Error> {
@@ -18,10 +18,10 @@ pub async fn get_input_command() -> Result<UserCommand, io::Error> {
             return match key_event.code {
                 KeyCode::Up => Ok(UserCommand::Up),
                 KeyCode::Down => Ok(UserCommand::Down),
-                _ => Ok(UserCommand::Get),
+                _ => Ok(UserCommand::None),
             };
         }
     }
 
-    Ok(UserCommand::Get)
+    Ok(UserCommand::None)
 }
