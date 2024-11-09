@@ -203,8 +203,12 @@ pub fn game_pingpong_run(rx: Receiver<GameData>) {
 }
 
 pub async fn pingpong_update(tx: Sender<GameData>, data: Vec<u8>) -> Result<(), io::Error> {
-    let game_data: GameData = serde_json::from_slice(&data)?;
-    println!("{:?}", game_data);
+    let game_data: GameData = if let Ok(data) =  serde_json::from_slice(&data){
+         data
+    }else{
+        println!("Not true");
+        return Ok(());
+    };
     tx.send(game_data).await.expect("Can't send to update game");
     Ok(())
 }

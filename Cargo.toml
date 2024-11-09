@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "client",   "library",
-    "server", "player_1_udp", "player_2_udp"
+    "server", "player_1_udp", "player_2_udp",
 ]
 
 [workspace.dependencies]

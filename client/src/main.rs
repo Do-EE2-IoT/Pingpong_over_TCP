@@ -10,7 +10,7 @@ use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    let mut client_tcp = ClientTcp::connect("127.0.0.1:8080").await.unwrap();
+    let mut client_tcp = ClientTcp::connect("172.16.100.196:8080").await.unwrap();
 
     let (tx, rx): (Sender<GameData>, Receiver<GameData>) = tokio::sync::mpsc::channel(100);
     spawn(async move {
@@ -47,7 +47,7 @@ async fn main() -> Result<(), io::Error> {
              recv_result = client_tcp.receive_data() => {
                 match recv_result {
                     Ok(data) => {
-                            pingpong_update(tx.clone(),data).await?;
+                        pingpong_update(tx.clone(),data).await?;
                     },
                     Err(e) => {
                         panic!("{}", e);

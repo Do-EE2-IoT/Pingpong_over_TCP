@@ -1,4 +1,5 @@
 use std::io;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 mod game;
 use async_std::task::spawn;
 use game::pingpong::{game_pingpong_run, pingpong_update, GameData, UserCommand};
@@ -17,8 +18,7 @@ async fn main() -> Result<(), io::Error> {
     spawn(async move {
         game_pingpong_run(rx, tx_game_data.clone());
     });
-
-    sleep(Duration::from_secs(2)).await;
+    let address = SocketAddrV4::new(Ipv4Addr::new(172, 16, 100, 196), 8080);
     // Lặp để nhận dữ liệu từ client và cập nhật game
     loop {
         select! {
@@ -41,8 +41,8 @@ async fn main() -> Result<(), io::Error> {
             Some(game_data) = rx_game_data.recv() => {
                 match serde_json::to_vec(&game_data) {
                     Ok(data) => {
-                        if let Err(e) = socket.broadcast(7878, data).await {
-                            eprintln!("Failed to send response: {:?}", e);
+                        if let Err(e) = socket.send(&address, data).await{
+                            println!("Fail to send message over udp {e}");
                         }
                     }
                     Err(e) => eprintln!("Failed to serialize GameData to JSON: {:?}", e),

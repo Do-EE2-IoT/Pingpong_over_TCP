@@ -196,15 +196,20 @@ impl event::EventHandler for MainState {
 pub fn game_pingpong_run(rx: Receiver<GameData>) {
     let cb: ggez::ContextBuilder = ggez::ContextBuilder::new("pong", "TanTan");
     let (mut ctx, mut event_loop) = cb.build().unwrap();
-    graphics::set_window_title(&ctx, "Client device");
+    graphics::set_window_title(&ctx, "player_1_udp");
     let mut state = MainState::new(&mut ctx, rx);
 
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
 
 pub async fn pingpong_update(tx: Sender<GameData>, data: Vec<u8>) -> Result<(), io::Error> {
-    let game_data: GameData = serde_json::from_slice(&data)?;
-    println!("{:?}", game_data);
+    let game_data = if let Ok(data) = serde_json::from_slice(&data){
+         data
+    }else{
+        println!("Not true");
+        return Ok(())
+    };
+   // println!("{:?}", game_data);
     tx.send(game_data).await.expect("Can't send to update game");
     Ok(())
 }
