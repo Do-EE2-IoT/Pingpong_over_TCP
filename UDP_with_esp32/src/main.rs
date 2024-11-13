@@ -18,7 +18,6 @@ async fn main() -> Result<(), io::Error> {
     spawn(async move {
         game_pingpong_run(rx, tx_game_data.clone());
     });
-    let address = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080);
     // Lặp để nhận dữ liệu từ client và cập nhật game
     loop {
         select! {
@@ -36,22 +35,6 @@ async fn main() -> Result<(), io::Error> {
                     }
                 }
             },
-
-             // Handle incoming game data
-            Some(game_data) = rx_game_data.recv() => {
-                match serde_json::to_vec(&game_data) {
-                    Ok(data) => {
-                        //if let Err(e) = socket.send(&address, data).await{
-                        if let Err(e) = socket.broadcast(8081, data).await{
-                            println!("Fail to send message over udp {e}");
-                        }
-                    }
-                    Err(e) => eprintln!("Failed to serialize GameData to JSON: {:?}", e),
-                }
-            },
-
-
-
         }
     }
 

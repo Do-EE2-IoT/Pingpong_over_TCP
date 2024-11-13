@@ -1,13 +1,14 @@
-use std::io;
+use std::time::Duration;
 
-use ggez;
 use ggez::event;
 use ggez::graphics;
-
+use ggez::input::keyboard::{self, KeyCode};
 use ggez::nalgebra as na;
+use ggez::timer;
 use ggez::{Context, GameResult};
 use rand::{self, thread_rng, Rng};
 use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 const PADDING: f32 = 40.0;
@@ -18,21 +19,46 @@ const RACKET_WIDTH_HALF: f32 = RACKET_WIDTH * 0.5;
 const RACKET_HEIGHT_HALF: f32 = RACKET_HEIGHT * 0.5;
 const BALL_SIZE: f32 = 30.0;
 const BALL_SIZE_HALF: f32 = BALL_SIZE * 0.5;
+const PLAYER_SPEED: f32 = 600.0;
 const BALL_SPEED: f32 = 200.0;
 
-pub fn randomize_vec(vec: &mut na::Vector2<f32>, x: f32, y: f32) {
-    let mut rng = thread_rng();
-    vec.x = match rng.gen_bool(0.5) {
-        true => x,
-        false => -x,
-    };
-    vec.y = match rng.gen_bool(0.5) {
-        true => y,
-        false => -y,
-    };
+#[derive(Deserialize, Debug)]
+pub enum UserCommand {
+    Up1,
+    Down1,
+    Up2,
+    Down2,
+    None,
 }
 
-#[derive(Deserialize, Debug)]
+fn clamp(value: &mut f32, low: f32, high: f32) {
+    if *value < low {
+        *value = low;
+    } else if *value > high {
+        *value = high;
+    }
+}
+
+fn move_racket(pos: &mut na::Point2<f32>, keycode: KeyCode, y_dir: f32, ctx: &mut Context) {
+    let dt = ggez::timer::delta(ctx).as_secs_f32();
+    let screen_h = graphics::drawable_size(ctx).1;
+    if keyboard::is_key_pressed(ctx, keycode) {
+        pos.y += y_dir * PLAYER_SPEED * dt;
+    }
+    clamp(
+        &mut pos.y,
+        RACKET_HEIGHT_HALF,
+        screen_h - RACKET_HEIGHT_HALF,
+    );
+}
+
+fn randomize_vec(vec: &mut na::Vector2<f32>, x: f32, y: f32) {
+    let mut rng = thread_rng();
+    vec.x = if rng.gen_bool(0.5) { x } else { -x };
+    vec.y = if rng.gen_bool(0.5) { y } else { -y };
+}
+
+#[derive(Deserialize, Debug, Serialize)]
 pub struct GameData {
     pos_player1: f32,
     pos_player2: f32,
@@ -42,18 +68,19 @@ pub struct GameData {
     score_player_2: f32,
 }
 
-pub struct MainState {
+struct MainState {
     player_1_pos: na::Point2<f32>,
     player_2_pos: na::Point2<f32>,
     ball_pos: na::Point2<f32>,
     ball_vel: na::Vector2<f32>,
     player_1_score: f32,
     player_2_score: f32,
-    rx: Receiver<GameData>,
+    rx: Receiver<UserCommand>,
+    tx: Sender<GameData>,
 }
 
 impl MainState {
-    pub fn new(ctx: &mut Context, rx: Receiver<GameData>) -> Self {
+    pub fn new(ctx: &mut Context, rx: Receiver<UserCommand>, tx: Sender<GameData>) -> Self {
         let (screen_w, screen_h) = graphics::drawable_size(ctx);
         let (screen_w_half, screen_h_half) = (screen_w * 0.5, screen_h * 0.5);
 
@@ -68,21 +95,57 @@ impl MainState {
             player_1_score: 0.0,
             player_2_score: 0.0,
             rx,
+            tx,
         }
     }
 }
 
 impl event::EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+        let dt = ggez::timer::delta(ctx).as_secs_f32();
         let (screen_w, screen_h) = graphics::drawable_size(ctx);
+        move_racket(&mut self.player_2_pos, KeyCode::Up, -1.0, ctx);
+        move_racket(&mut self.player_2_pos, KeyCode::Down, 1.0, ctx);
+
         if let Ok(data) = self.rx.try_recv() {
-            self.player_1_pos.y = data.pos_player1;
-            self.player_1_score = data.score_player_1;
-            self.player_2_pos.y = data.pos_player2;
-            self.player_2_score = data.score_player_2;
-            self.ball_pos.x = data.pos_ball_x;
-            self.ball_pos.y = data.pos_ball_y;
+            match data {
+                UserCommand::Up1 => {
+                    self.player_1_pos.y += -5.0 * PLAYER_SPEED * dt;
+                    clamp(
+                        &mut self.player_1_pos.y,
+                        RACKET_HEIGHT_HALF,
+                        screen_h - RACKET_HEIGHT_HALF,
+                    );
+                }
+                UserCommand::Down1 => {
+                    self.player_1_pos.y += 5.0 * PLAYER_SPEED * dt;
+                    clamp(
+                        &mut self.player_1_pos.y,
+                        RACKET_HEIGHT_HALF,
+                        screen_h - RACKET_HEIGHT_HALF,
+                    );
+                }
+                UserCommand::Up2 => {
+                    self.player_2_pos.y += -5.0 * PLAYER_SPEED * dt;
+                    clamp(
+                        &mut self.player_2_pos.y,
+                        RACKET_HEIGHT_HALF,
+                        screen_h - RACKET_HEIGHT_HALF,
+                    );
+                }
+                UserCommand::Down2 => {
+                    self.player_2_pos.y += 5.0 * PLAYER_SPEED * dt;
+                    clamp(
+                        &mut self.player_2_pos.y,
+                        RACKET_HEIGHT_HALF,
+                        screen_h - RACKET_HEIGHT_HALF,
+                    );
+                }
+                UserCommand::None => println!("Dont't have command"),
+            }
         }
+
+        self.ball_pos += self.ball_vel * dt;
 
         if self.ball_pos.x < 0.0 {
             self.ball_pos.x = screen_w * 0.5;
@@ -185,31 +248,31 @@ impl event::EventHandler for MainState {
         let (score_text_w, score_text_h) = score_text.dimensions(ctx);
         score_pos -= na::Vector2::new(score_text_w as f32 * 0.5, score_text_h as f32 * 0.5);
         draw_param.dest = score_pos.into();
-
         graphics::draw(ctx, &score_text, draw_param)?;
-
         graphics::present(ctx)?;
+
         Ok(())
     }
 }
 
-pub fn game_pingpong_run(rx: Receiver<GameData>) {
+pub fn game_pingpong_run(rx: Receiver<UserCommand>, tx: Sender<GameData>) {
     let cb: ggez::ContextBuilder = ggez::ContextBuilder::new("pong", "TanTan");
     let (mut ctx, mut event_loop) = cb.build().unwrap();
-    graphics::set_window_title(&ctx, "player_1_udp");
-    let mut state = MainState::new(&mut ctx, rx);
+    graphics::set_window_title(&ctx, "player_2_udp");
+    let mut state = MainState::new(&mut ctx, rx, tx);
 
     event::run(&mut ctx, &mut event_loop, &mut state).expect("Cannot run");
 }
 
-pub async fn pingpong_update(tx: Sender<GameData>, data: Vec<u8>) -> Result<(), io::Error> {
-    let game_data = if let Ok(data) = serde_json::from_slice(&data) {
+pub async fn pingpong_update(tx: Sender<UserCommand>, data: Vec<u8>) -> Result<(), std::io::Error> {
+    // Chỉ nhận data kiểu user command
+
+    let command: UserCommand = if let Ok(data) = serde_json::from_slice(&data) {
         data
     } else {
         println!("Not true");
         return Ok(());
     };
-    // println!("{:?}", game_data);
-    tx.send(game_data).await.expect("Can't send to update game");
+    tx.send(command).await.expect("Can't send to game update");
     Ok(())
 }

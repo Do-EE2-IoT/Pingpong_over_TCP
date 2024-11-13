@@ -12,13 +12,13 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    let mut socket = UDP::listen("0.0.0.0:60000").await.unwrap();
+    let mut socket = UDP::listen("0.0.0.0:7878").await.unwrap();
     let (tx, rx): (Sender<GameData>, Receiver<GameData>) = tokio::sync::mpsc::channel(100);
     spawn(async move {
         game_pingpong_run(rx);
     });
 
-    //let address = SocketAddrV4::new(Ipv4Addr::new(172, 16, 100, 196), 8080);
+    let address = SocketAddrV4::new(Ipv4Addr::new(172, 16, 100, 197), 7878);
 
     loop {
         tokio::select! {
@@ -29,12 +29,13 @@ async fn main() -> Result<(), io::Error> {
                                 UserCommand::Up => {
                                     let data = serde_json::to_vec(&UserCommand::Up)?;
 
-                                    socket.broadcast(8080, data).await.unwrap();
+                                     //socket.broadcast(8080, data).await.unwrap();
+                                   socket.send(&address, data).await.unwrap();
                                 },
                                 UserCommand::Down => {
                                     let data = serde_json::to_vec(&UserCommand::Down)?;
-
-                                     socket.broadcast(8080, data).await.unwrap();
+                                    socket.send(&address, data).await.unwrap();
+                                    // socket.broadcast(8080, data).await.unwrap();
                                 },
                                 UserCommand::None=> {
 
